@@ -3183,6 +3183,43 @@ class OperationTests(OperationTestBase):
             operation.database_backwards("test_rfmx", editor, new_state, project_state)
         self.assertColumnExists("test_rfmx_pony", "field")
 
+    def test_rename_field_with_index(self):
+        """
+        Tests the RenameField operation's renaming of associated indexes.
+        """
+        project_state = self.set_up_test_model("test_rnfl")
+        # Add index to field before rename.
+        index = models.Index(fields=["pink"], name="test_rnfl_pony_pink_idx")
+        operation = migrations.AddIndex("Pony", index)
+        new_state = project_state.clone()
+        operation.state_forwards("test_rnfl", new_state)
+        with connection.schema_editor() as editor:
+            operation.database_forwards("test_rnfl", editor, project_state, new_state)
+        operation = migrations.RenameField("Pony", "pink", "blue")
+        operation.state_forwards("test_rnfl", new_state)
+        # Rename field.
+        with connection.schema_editor() as editor:
+            operation.database_forwards("test_rnfl", editor, project_state, new_state)
+        self.assertIndexNotExists("test_rnfl_pony", ["pink"])
+        self.assertIndexNameNotExists("test_rnfl_pony", "test_rnfl_pony_pink_idx")
+        self.assertIndexExists("test_rnfl_pony", ["blue"])
+        self.assertIndexNameExists("test_rnfl_pony", "test_rnfl_pony_blue_idx")
+        # Reversal.
+        with connection.schema_editor() as editor:
+            operation.database_backwards("test_rnfl", editor, new_state, project_state)
+        self.assertIndexExists("test_rnfl_pony", ["pink"])
+        self.assertIndexNameExists("test_rnfl_pony", "test_rnfl_pony_pink_idx")
+        self.assertIndexNotExists("test_rnfl_pony", ["blue"])
+        self.assertIndexNameNotExists("test_rnfl_pony", "test_rnfl_pony_blue_idx")
+        # Deconstruction.
+        definition = operation.deconstruct()
+        self.assertEqual(definition[0], "RenameField")
+        self.assertEqual(definition[1], [])
+        self.assertEqual(
+            definition[2],
+            {"model_name": "Pony", "old_name": "pink", "new_name": "blue"},
+        )
+
     def test_rename_missing_field(self):
         state = ProjectState()
         state.add_model(ModelState("app", "model", []))
